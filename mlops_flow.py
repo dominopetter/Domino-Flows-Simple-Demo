@@ -6,8 +6,7 @@ from flytekitplugins.domino.task import DominoJobConfig, DominoJobTask, GitRef, 
 from flytekitplugins.domino.artifact import Artifact, DATA, MODEL, REPORT
 
 # Set the name of this variable to the name of your Domino's standard environment
-environment_name="Domino Standard Environment Py3.10 R4.4"
-environment_revision_id="6823275f2d6636701dd69cda"
+environment_name="flows"
 
 # Set if you want caching on or off. 
 cache=False
@@ -39,7 +38,6 @@ def model_training(data_path_a: str, data_path_b: str):
         output_specs=[Output(name='datasetA', type=FlyteFile[TypeVar('csv')])],
         use_project_defaults_for_omitted=True,
         environment_name=environment_name,
-        environment_revision_id=environment_revision_id,
         hardware_tier_name="Small",
         cache=cache,
         cache_version="1.0"
