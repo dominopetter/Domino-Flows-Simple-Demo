@@ -7,6 +7,7 @@ from flytekitplugins.domino.artifact import Artifact, DATA, MODEL, REPORT
 
 # Set the name of this variable to the name of your Domino's standard environment
 environment_name="Domino Standard Environment Py3.10 R4.4"
+environment_revision_id="6823275f2d6636701dd69cda"
 
 # Set if you want caching on or off. 
 cache=False
