@@ -1,60 +1,85 @@
-import streamlit as st
+import dash
+from dash import html, dcc, Input, Output, State
+import dash_cytoscape as cyto
 import os
-from io import StringIO
 from pathlib import Path
 
 # --- Constants ---
 CODE_DIR = "/mnt/code"
-SAVE_DIR = "/mnt/data/flows-demo"
-Path(SAVE_DIR).mkdir(parents=True, exist_ok=True)
+SAVE_DIR = Path("/mnt/data/flows-demo")
+SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
-# --- Page Setup ---
-st.set_page_config(page_title="Domino Flow Designer", layout="wide")
-st.title("Domino Flow Designer (Single Task Prototype)")
+# List Python scripts
+scripts = [f for f in os.listdir(CODE_DIR) if f.endswith(".py")]
 
-# --- Step 1: Select or Upload Script ---
-st.subheader("1. Select or Upload Script")
+# Initial empty graph
+default_elements = []
 
-# List .py files from /mnt/code
-existing_scripts = [f for f in os.listdir(CODE_DIR) if f.endswith(".py")]
-selected_script = st.selectbox("Select existing script from /mnt/code:", ["-- None --"] + existing_scripts)
+app = dash.Dash(__name__)
+app.title = "Domino Flow Builder"
 
-uploaded_file = st.file_uploader("Or upload a Python script", type=["py"])
+app.layout = html.Div([
+    html.H1("Domino Flow Builder (Dash Prototype)"),
+    html.Div([
+        html.H3("Available Scripts"),
+        html.Ul([html.Li(script, id=f"script-{i}") for i, script in enumerate(scripts)])
+    ], style={"width": "20%", "float": "left"}),
 
-script_name = None
-if selected_script != "-- None --":
-    script_name = os.path.join(CODE_DIR, selected_script)
-    st.info(f"Using existing script: {script_name}")
-elif uploaded_file:
-    script_name = uploaded_file.name
-    with open(script_name, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    st.success(f"Uploaded {script_name}")
+    html.Div([
+        cyto.Cytoscape(
+            id='dag-canvas',
+            layout={'name': 'breadthfirst'},
+            style={'width': '100%', 'height': '500px'},
+            elements=default_elements,
+            stylesheet=[
+                {'selector': 'node', 'style': {'label': 'data(label)'}},
+                {'selector': 'edge', 'style': {'curve-style': 'bezier', 'target-arrow-shape': 'triangle'}}
+            ]
+        ),
+        html.Button("Generate Workflow", id="generate-btn", n_clicks=0),
+        html.Div(id="output")
+    ], style={"width": "75%", "float": "right"})
+])
 
-# --- Step 2: Task Definition ---
-st.subheader("2. Define Task Settings")
-task_name = st.text_input("Task name", value="MyTask")
-default_command = f"python {os.path.basename(script_name) if script_name else 'script.py'}"
-command = st.text_input("Command", value=default_command)
-
-# --- Step 3: Task Inputs ---
-st.subheader("3. Define Task Inputs (only one for now)")
-input_name = st.text_input("Input name", value="data_path")
-input_type = st.selectbox("Input type", ["str", "int", "float", "bool"])
-
-# --- Step 4: Task Outputs ---
-st.subheader("4. Define Task Output (only one for now)")
-output_name = st.text_input("Output name", value="processed_data")
-output_type = st.selectbox(
-    "Output type",
-    ["FlyteFile[TypeVar('csv')]", "FlyteFile[TypeVar('txt')]", "float", "int", "str"]
+@app.callback(
+    Output("output", "children"),
+    Input("generate-btn", "n_clicks"),
+    State("dag-canvas", "elements")
 )
+def generate_workflow(n_clicks, elements):
+    if n_clicks == 0:
+        return ""
+    if not elements:
+        return "No graph defined."
 
-# --- Step 5: Generate workflow.py ---
-if st.button("Generate Workflow File"):
-    workflow_code = f'''from flytekit import workflow
-from flytekitplugins.domino.helpers import Input, Output, run_domino_job_task
-from flytekit.types.file import FlyteFile
-from typing import TypeVar
+    nodes = [el for el in elements if el['data'].get('id') and el['group'] == 'nodes']
+    edges = [el for el in elements if el['group'] == 'edges']
+
+    # Simple code generation (linear order for now)
+    tasks = ""
+    for node in nodes:
+        script = node['data']['label']
+        tasks += f"""
+    {node['data']['id']}_results = run_domino_job_task(
+        flyte_task_name="{node['data']['id']}",
+        command="python {script}",
+        inputs=[],
+        output_specs=[],
+        use_project_defaults_for_omitted=True
+    )"""
+
+    workflow_code = f"""from flytekit import workflow
+from flytekitplugins.domino.helpers import run_domino_job_task
 
 @workflow
+def auto_generated_flow():
+{tasks}
+    return
+"""
+    save_path = SAVE_DIR / "workflow.py"
+    save_path.write_text(workflow_code)
+
+    return f"Workflow generated and saved to {save_path}"
+
+if __name__ == '__main__':
+    app.run_server(host="0.0.0.0", port=8050)
